@@ -308,6 +308,8 @@ async function loadAll(){
 function setSS(m){document.getElementById('ss').textContent=m;}
 
 /* ── NAV ── */
+const RAPOR_DEPT=['Genel Müdür','Kalite'];
+
 function buildNav(){
   const d=DEPT_YETKİ[me.departman]||{};
   const onayCount=db.teklifler.filter(t=>t.akis_durumu==='ONAY BEKLİYOR').length;
@@ -316,7 +318,8 @@ function buildNav(){
     {id:'teklifler',label:'Teklifler'},
     {id:'projeler',label:'Projeler'},
     {id:'onaylar',label:'Onaylar',notif:onayCount},
-    ...(d.teklif?[{id:'yeni',label:'+ Yeni Teklif'}]:[])
+    ...(d.teklif?[{id:'yeni',label:'+ Yeni Teklif'}]:[]),
+    ...(RAPOR_DEPT.includes(me.departman)?[{id:'raporlar',label:'Raporlar'}]:[])
   ];
   document.getElementById('mainNav').innerHTML=tabs.map(t=>
     `<button class="nb ${currentTab===t.id?'active':''}" onclick="showTab('${t.id}')">${t.label}${t.notif?`<span class="notif">${t.notif}</span>`:''}</button>`
@@ -332,6 +335,7 @@ function renderTab(tab){
   else if(tab==='projeler') c.innerHTML=renderProjeler();
   else if(tab==='onaylar') c.innerHTML=renderOnaylar();
   else if(tab==='yeni') c.innerHTML=renderYeniTeklif();
+  else if(tab==='raporlar') c.innerHTML=renderRaporlar();
 }
 
 /* ── HELPERS ── */
@@ -366,8 +370,8 @@ function daysDiff(d){if(!d)return null;const diff=Math.round((new Date(d)-new Da
 function renderDashboard(){
   const t=db.teklifler; const p=db.projeler; const k=db.kalemler;
   const onayBekleyen=t.filter(x=>x.akis_durumu==='ONAY BEKLİYOR').length;
-  const devamEden=p.filter(x=>x.akis_durumu!=='TAMAMLANDI').length;
-  const tamamlanan=p.filter(x=>x.akis_durumu==='TAMAMLANDI').length;
+  const devamEden=p.filter(x=>x.akis_durumu!=='TAMAMLANDI'&&x.akis_durumu!=='KISMİ TESLİM').length;
+  const tamamlanan=p.filter(x=>x.akis_durumu==='TAMAMLANDI'||x.akis_durumu==='KISMİ TESLİM').length;
   const geciken=p.filter(x=>{if(!x.termin)return false;return new Date(x.termin)<new Date()&&x.akis_durumu!=='TAMAMLANDI';}).length;
 
   // Aksiyon gerektiren — departmana göre
@@ -468,7 +472,7 @@ function renderDashboard(){
   html+=`<div class="card">
     <div class="card-head"><div class="card-title">Son tamamlanan projeler</div><span class="badge b-green">${tamamlanan}</span></div>
     <table class="tbl"><thead><tr><th>PN</th><th>Müşteri</th><th>Kategori</th><th>Tamamlanma</th></tr></thead><tbody>`;
-  p.filter(x=>x.akis_durumu==='TAMAMLANDI').slice(0,5).forEach(x=>{
+  p.filter(x=>x.akis_durumu==='TAMAMLANDI'||x.akis_durumu==='KISMİ TESLİM').slice(0,5).forEach(x=>{
     html+=`<tr onclick="openProjeModal('${x.pn}')">
       <td style="font-weight:700;color:#185FA5">${x.pn}</td>
       <td style="font-weight:600">${x.musteri_adi||'—'}</td>
@@ -482,17 +486,72 @@ function renderDashboard(){
 }
 
 /* ── TEKLİFLER TABLOSU ── */
+let teklifSortCol='', teklifSortAsc=true, teklifSearch='', teklifArsiv=false;
+const TEKNIK_SATIS_DEPT='Teknik Satış Mühendisi';
+
+const TEKLIF_ARSIV_DURUM=['OLUMSUZ','REDDEDİLDİ','ONAYLANDI'];
+
 function renderTeklifler(){
   const d=DEPT_YETKİ[me.departman]||{};
-  let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-    <div style="font-size:12px;color:#888">${db.teklifler.length} teklif</div>
-    ${d.teklif?'<button class="btn btn-primary" onclick="showTab(\'yeni\')">+ Yeni Teklif</button>':''}
+
+  // Filtrele
+  const isTeknikSatis=me.departman===TEKNIK_SATIS_DEPT;
+  let liste=db.teklifler.filter(t=>{
+    if(isTeknikSatis && t.teknik_satis_muh!==me.ad_soyad) return false;
+    // Arşiv / Aktif ayrımı
+    const arsivMi=TEKLIF_ARSIV_DURUM.includes(t.akis_durumu)||t.akis_durumu==='OLUMSUZ';
+    if(teklifArsiv && !arsivMi) return false;
+    if(!teklifArsiv && arsivMi) return false;
+    if(teklifSearch){
+      const s=teklifSearch.toLowerCase();
+      return (t.tn||'').toLowerCase().includes(s)||
+             (t.musteri_adi||'').toLowerCase().includes(s)||
+             (t.kategori||'').toLowerCase().includes(s)||
+             (t.akis_durumu||'').toLowerCase().includes(s)||
+             (t.teknik_satis_muh||'').toLowerCase().includes(s);
+    }
+    return true;
+  });
+
+  // Varsayılan sıralama: olumsuz/kapananlar altta, gönderim tarihi yeniden eskiye
+  const durumOncelik=(d)=>{
+    if(['OLUMSUZ','REDDEDİLDİ'].includes(d)) return 99;
+    if(d==='ONAYLANDI') return 50;
+    return 1;
+  };
+  if(!teklifSortCol){
+    liste.sort((a,b)=>{
+      const dp=durumOncelik(a.akis_durumu)-durumOncelik(b.akis_durumu);
+      if(dp!==0) return dp;
+      const da=a.teklif_gonderme_tarihi||a.created_at||'';
+      const db2=b.teklif_gonderme_tarihi||b.created_at||'';
+      return db2.localeCompare(da);
+    });
+  } else {
+    liste.sort((a,b)=>{
+      const va=a[teklifSortCol]||'', vb=b[teklifSortCol]||'';
+      return teklifSortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    });
+  }
+
+  function thSort(label,col,cls=''){
+    const aktif=teklifSortCol===col;
+    const ok=aktif?(teklifSortAsc?'▲':'▼'):'⇅';
+    return `<th class="${cls}" style="cursor:pointer;user-select:none" onclick="sortTeklif('${col}')">${label} <span style="font-size:9px;color:${aktif?'#185FA5':'#bbb'}">${ok}</span></th>`;
+  }
+
+  let html=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <input id="teklifSearchInput" placeholder="Ara: TN, müşteri, kategori, durum..." value="${teklifSearch}"
+      oninput="teklifSearch=this.value;renderTeklifTable()"
+      style="font-size:12px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;width:260px">
+    <button class="btn ${teklifArsiv?'btn-primary':''}" onclick="teklifArsiv=!teklifArsiv;renderTab('teklifler')" style="${teklifArsiv?'':'color:#888'}">
+      ${teklifArsiv?'← Aktif Teklifler':'Arşiv'}
+    </button>
+    <div style="font-size:12px;color:#888" id="teklifSayac">${liste.length} teklif${isTeknikSatis?' (sadece senin tekliflerin)':''}</div>
+    ${d.teklif&&!teklifArsiv?'<button class="btn btn-primary" onclick="showTab(\'yeni\')">+ Yeni Teklif</button>':''}
     <button class="btn" style="margin-left:auto" onclick="exportTeklifler()">Excel İndir</button>
   </div>
-  <div class="card"><div class="tbl-wrap"><table class="tbl">
-    <thead>
-      <tr>
-        <th colspan="4">GENEL</th>
+  <div class="card" id="teklifTableWrap"><div class="tbl-wrap"><table class="tbl">
         <th class="gh gh-satis" colspan="2">SATIŞ DESTEK</th>
         <th class="gh gh-teknik" colspan="2">TEKNİK SATIŞ MÜH.</th>
         <th class="gh gh-uretim" colspan="3">ÜRETİM</th>
@@ -511,8 +570,8 @@ function renderTeklifler(){
       </tr>
     </thead><tbody>`;
 
-  if(!db.teklifler.length) html+=`<tr><td colspan="18" style="padding:20px;text-align:center;color:#aaa">Henüz teklif yok</td></tr>`;
-  db.teklifler.forEach(t=>{
+  if(!liste.length) html+=`<tr><td colspan="18" style="padding:20px;text-align:center;color:#aaa">Kayıt bulunamadı</td></tr>`;
+  liste.forEach(t=>{
     html+=`<tr onclick="openTeklifModal('${t.id}')">
       <td style="font-weight:700;color:#185FA5">${t.tn}</td>
       <td><span class="badge b-gray">R${t.revizyon_no||0}</span></td>
@@ -538,13 +597,183 @@ function renderTeklifler(){
   return html;
 }
 
+function renderTeklifTable(){
+  const wrap=document.getElementById('teklifTableWrap');
+  if(!wrap){renderTab('teklifler');return;}
+  const isTeknikSatis=me.departman===TEKNIK_SATIS_DEPT;
+  let liste=db.teklifler.filter(t=>{
+    if(isTeknikSatis && t.teknik_satis_muh!==me.ad_soyad) return false;
+    const arsivMi=TEKLIF_ARSIV_DURUM.includes(t.akis_durumu)||t.akis_durumu==='OLUMSUZ';
+    if(teklifArsiv && !arsivMi) return false;
+    if(!teklifArsiv && arsivMi) return false;
+    if(teklifSearch){
+      const s=teklifSearch.toLowerCase();
+      return (t.tn||'').toLowerCase().includes(s)||
+             (t.musteri_adi||'').toLowerCase().includes(s)||
+             (t.kategori||'').toLowerCase().includes(s)||
+             (t.akis_durumu||'').toLowerCase().includes(s)||
+             (t.teknik_satis_muh||'').toLowerCase().includes(s);
+    }
+    return true;
+  });
+  const durumOncelik=(d)=>{
+    if(['OLUMSUZ','REDDEDİLDİ'].includes(d)) return 99;
+    if(d==='ONAYLANDI') return 50;
+    return 1;
+  };
+  if(!teklifSortCol){
+    liste.sort((a,b)=>{
+      const dp=durumOncelik(a.akis_durumu)-durumOncelik(b.akis_durumu);
+      if(dp!==0) return dp;
+      const da=a.teklif_gonderme_tarihi||a.created_at||'';
+      const db2=b.teklif_gonderme_tarihi||b.created_at||'';
+      return db2.localeCompare(da);
+    });
+  } else {
+    liste.sort((a,b)=>{
+      const va=a[teklifSortCol]||'', vb=b[teklifSortCol]||'';
+      return teklifSortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    });
+  }
+  let tbody='';
+  if(!liste.length) tbody=`<tr><td colspan="18" style="padding:20px;text-align:center;color:#aaa">Kayıt bulunamadı</td></tr>`;
+  liste.forEach(t=>{
+    tbody+=`<tr onclick="openTeklifModal('${t.id}')">
+      <td style="font-weight:700;color:#185FA5">${t.tn}</td>
+      <td><span class="badge b-gray">R${t.revizyon_no||0}</span></td>
+      <td style="font-size:10px">${t.talep_tarihi||'—'}</td>
+      <td style="font-weight:600">${t.musteri_adi||'—'}</td>
+      <td>${catb(t.kategori)}</td>
+      <td>${t.teknik_satis_muh||'—'}</td>
+      <td>${t.musteri_yetkilisi||'—'}</td>
+      <td>${t.teknik_sartname==='Eklendi'?'<span class="badge b-green">Eklendi</span>':t.teknik_sartname?`<span class="badge b-amber">${t.teknik_sartname}</span>`:'<span class="badge b-gray">—</span>'}</td>
+      <td style="font-size:10px">${t.teknik_sartname_tarihi||'—'}</td>
+      <td>${t.teklifi_hazirlayan||'<span style="color:#ccc">—</span>'}</td>
+      <td>${t.teklif_durum_uretim?sb(t.teklif_durum_uretim):'<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px">${t.onaya_sunulma_tarihi||'<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px">${t.ic_onay_yapan||'<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px">${t.ic_onay_tarihi||'<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px">${t.teklif_gonderme_tarihi||'<span style="color:#ccc">—</span>'}</td>
+      <td style="font-size:10px">${t.teklif_gecerlilik_tarihi||'<span style="color:#ccc">—</span>'}</td>
+      <td>${t.teklif_durumu_musteri?sb(t.teklif_durumu_musteri):'<span style="color:#ccc">—</span>'}</td>
+      <td>${sb(t.akis_durumu)}</td>
+    </tr>`;
+  });
+  wrap.querySelector('tbody').innerHTML=tbody;
+  const sayac=document.getElementById('teklifSayac');
+  if(sayac) sayac.textContent=`${liste.length} teklif${isTeknikSatis?' (sadece senin tekliflerin)':''}`;
+}
+
+function renderProjeTable(){
+  const wrap=document.getElementById('projeTableWrap');
+  if(!wrap){renderTab('projeler');return;}
+  const isTeknikSatis=me.departman===TEKNIK_SATIS_DEPT;
+  let liste=db.projeler.filter(p=>{
+    if(isTeknikSatis && p.teknik_satis_muh!==me.ad_soyad) return false;
+    const arsivMi=PROJE_ARSIV_DURUM.includes(p.akis_durumu);
+    if(projeArsiv && !arsivMi) return false;
+    if(!projeArsiv && arsivMi) return false;
+    if(projeSearch){
+      const s=projeSearch.toLowerCase();
+      return (p.pn||'').toLowerCase().includes(s)||
+             (p.tn||'').toLowerCase().includes(s)||
+             (p.musteri_adi||'').toLowerCase().includes(s)||
+             (p.kategori||'').toLowerCase().includes(s)||
+             (p.akis_durumu||'').toLowerCase().includes(s);
+    }
+    return true;
+  });
+  const projeDurumOncelik=(d)=>{
+    if(d==='TAMAMLANDI'||d==='KISMİ TESLİM') return 99;
+    return 1;
+  };
+  if(!projeSortCol){
+    liste.sort((a,b)=>{
+      const dp=projeDurumOncelik(a.akis_durumu)-projeDurumOncelik(b.akis_durumu);
+      if(dp!==0) return dp;
+      const da=a.created_at||'', db2=b.created_at||'';
+      return db2.localeCompare(da);
+    });
+  } else {
+    liste.sort((a,b)=>{
+      const va=a[projeSortCol]||'', vb=b[projeSortCol]||'';
+      return projeSortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    });
+  }
+  let tbody='';
+  if(!liste.length) tbody=`<tr><td colspan="24" style="padding:20px;text-align:center;color:#aaa">Kayıt bulunamadı</td></tr>`;
+  liste.forEach(proj=>{
+    const kl=db.kalemler.filter(k=>k.pn===proj.pn);
+    const isLate=proj.termin&&new Date(proj.termin)<new Date()&&proj.akis_durumu!=='TAMAMLANDI';
+    if(kl.length===0) tbody+=projeRow(proj,null,isLate,true);
+    else kl.forEach((k,i)=>{tbody+=projeRow(proj,k,isLate,i===0);});
+  });
+  wrap.querySelector('tbody').innerHTML=tbody;
+  const sayac=document.getElementById('projeSayac');
+  if(sayac) sayac.textContent=`${liste.length} proje${isTeknikSatis?' (sadece senin projelerin)':''}`;
+}
+
 /* ── PROJELer TABLOSU ── */
+let projeSortCol='', projeSortAsc=true, projeSearch='', projeArsiv=false;
+
+const PROJE_ARSIV_DURUM=['TAMAMLANDI','KISMİ TESLİM'];
+
 function renderProjeler(){
-  let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-    <div style="font-size:12px;color:#888">${db.projeler.length} proje</div>
+  const isTeknikSatis=me.departman===TEKNIK_SATIS_DEPT;
+
+  // Filtrele
+  let liste=db.projeler.filter(p=>{
+    if(isTeknikSatis && p.teknik_satis_muh!==me.ad_soyad) return false;
+    const arsivMi=PROJE_ARSIV_DURUM.includes(p.akis_durumu);
+    if(projeArsiv && !arsivMi) return false;
+    if(!projeArsiv && arsivMi) return false;
+    if(projeSearch){
+      const s=projeSearch.toLowerCase();
+      return (p.pn||'').toLowerCase().includes(s)||
+             (p.tn||'').toLowerCase().includes(s)||
+             (p.musteri_adi||'').toLowerCase().includes(s)||
+             (p.kategori||'').toLowerCase().includes(s)||
+             (p.akis_durumu||'').toLowerCase().includes(s);
+    }
+    return true;
+  });
+
+  // Varsayılan sıralama: tamamlananlar altta, devam edenler yeniden eskiye
+  const projeDurumOncelik=(d)=>{
+    if(d==='TAMAMLANDI'||d==='KISMİ TESLİM') return 99;
+    return 1;
+  };
+  if(!projeSortCol){
+    liste.sort((a,b)=>{
+      const dp=projeDurumOncelik(a.akis_durumu)-projeDurumOncelik(b.akis_durumu);
+      if(dp!==0) return dp;
+      const da=a.created_at||'', db2=b.created_at||'';
+      return db2.localeCompare(da);
+    });
+  } else {
+    liste.sort((a,b)=>{
+      const va=a[projeSortCol]||'', vb=b[projeSortCol]||'';
+      return projeSortAsc?va.localeCompare(vb):vb.localeCompare(va);
+    });
+  }
+
+  function thSort(label,col,cls=''){
+    const aktif=projeSortCol===col;
+    const ok=aktif?(projeSortAsc?'▲':'▼'):'⇅';
+    return `<th class="${cls}" style="cursor:pointer;user-select:none" onclick="sortProje('${col}')">${label} <span style="font-size:9px;color:${aktif?'#185FA5':'#bbb'}">${ok}</span></th>`;
+  }
+
+  let html=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+    <input id="projeSearchInput" placeholder="Ara: PN, TN, müşteri, kategori, durum..." value="${projeSearch}"
+      oninput="projeSearch=this.value;renderProjeTable()"
+      style="font-size:12px;padding:6px 10px;border:1px solid #ddd;border-radius:6px;width:260px">
+    <button class="btn ${projeArsiv?'btn-primary':''}" onclick="projeArsiv=!projeArsiv;renderTab('projeler')" style="${projeArsiv?'':'color:#888'}">
+      ${projeArsiv?'← Aktif Projeler':'Arşiv'}
+    </button>
+    <div style="font-size:12px;color:#888" id="projeSayac">${liste.length} proje${isTeknikSatis?' (sadece senin projelerin)':''}</div>
     <button class="btn" style="margin-left:auto" onclick="exportProjeler()">Excel İndir</button>
   </div>
-  <div class="card"><div class="tbl-wrap"><table class="tbl">
+  <div class="card" id="projeTableWrap"><div class="tbl-wrap"><table class="tbl">
     <thead>
       <tr>
         <th colspan="10" class="gh gh-satis">TEKLİF (OTOMATİK GELİR)</th>
@@ -556,9 +785,9 @@ function renderProjeler(){
         <th>DURUM</th>
       </tr>
       <tr>
-        <th>PN</th><th>TN</th><th>Onay Tar.</th><th>Teknik Müh.</th><th>Müşteri</th><th>Fatura Adr.</th><th>Sevk Adr.</th><th>Müşteri Yet.</th><th>Kategori</th><th>İş Tanımı</th>
+        ${thSort('PN','pn')}<th>TN</th><th>Onay Tar.</th><th>Teknik Müh.</th><th>Müşteri</th><th>Fatura Adr.</th><th>Sevk Adr.</th><th>Müşteri Yet.</th><th>Kategori</th><th>İş Tanımı</th>
         <th class="th-planlama">Plan Baş.</th><th class="th-planlama">Plan Bitiş</th><th class="th-planlama">Termin</th><th class="th-planlama">Genel Durum</th>
-        <th class="th-uretim">Kalem</th><th class="th-uretim">Tam/Kısmi</th><th class="th-uretim">Üretim Durum</th>
+        <th class="th-uretim">İş Emri No</th><th class="th-uretim">Kalem</th><th class="th-uretim">Tam/Kısmi</th><th class="th-uretim">Üretim Durum</th>
         <th class="th-qc">QC Rapor No</th><th class="th-qc">QC Tarihi</th>
         <th class="th-muhasebe">Fatura No</th><th class="th-muhasebe">Fatura Tar.</th>
         <th class="th-sevkiyat">Sevk Tar.</th><th class="th-sevkiyat">Teslim Tar.</th>
@@ -566,9 +795,9 @@ function renderProjeler(){
       </tr>
     </thead><tbody>`;
 
-  if(!db.projeler.length) html+=`<tr><td colspan="24" style="padding:20px;text-align:center;color:#aaa">Henüz proje yok</td></tr>`;
+  if(!liste.length) html+=`<tr><td colspan="24" style="padding:20px;text-align:center;color:#aaa">Kayıt bulunamadı</td></tr>`;
 
-  db.projeler.forEach(proj=>{
+  liste.forEach(proj=>{
     const kl=db.kalemler.filter(k=>k.pn===proj.pn);
     const isLate=proj.termin&&new Date(proj.termin)<new Date()&&proj.akis_durumu!=='TAMAMLANDI';
     if(kl.length===0){
@@ -579,6 +808,18 @@ function renderProjeler(){
   });
   html+=`</tbody></table></div></div>`;
   return html;
+}
+
+function sortTeklif(col){
+  if(teklifSortCol===col) teklifSortAsc=!teklifSortAsc;
+  else{teklifSortCol=col;teklifSortAsc=true;}
+  renderTeklifTable();
+}
+
+function sortProje(col){
+  if(projeSortCol===col) projeSortAsc=!projeSortAsc;
+  else{projeSortCol=col;projeSortAsc=true;}
+  renderProjeTable();
 }
 
 function projeRow(proj,k,isLate,showMeta){
@@ -598,10 +839,11 @@ function projeRow(proj,k,isLate,showMeta){
       <td style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
       <td style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
       <td style="font-size:10px">${proj.genel_durum||'—'}</td>`
-    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
 
   return `<tr onclick="openProjeModal('${proj.pn}')">
     ${meta}
+    <td class="th-uretim" style="font-size:10px;font-weight:600;color:#854F0B">${showMeta?proj.is_emri_no||'<span style="color:#ccc">—</span>':'<span style="color:#ccc"></span>'}</td>
     <td class="th-uretim" style="font-size:10px">${k?k.aciklama||'—':'—'}</td>
     <td style="font-size:10px">${k?k.tam_kismi||'—':'—'}</td>
     <td>${k?sb(k.uretim_durumu):'<span style="color:#ccc">—</span>'}</td>
@@ -771,7 +1013,7 @@ async function saveTeklif(){
 function openTeklifModal(id){
   const t=db.teklifler.find(x=>x.id===id||x.tn===id);
   if(!t) return;
-  const proj=db.projeler.find(x=>x.tn===t.tn);
+  const proj=db.projeler.find(x=>x.tn===t.tn && x.teklif_onay_tarihi===t.teklif_onay_tarihi_musteri);
   const eS=canEdit('satis'), eT=canEdit('teknik'), eU=canEdit('uretim'), eO=canEdit('onay');
 
   setModal(`
@@ -813,7 +1055,15 @@ function openTeklifModal(id){
         <div class="fg"><label>Eklenme Tarihi</label><input id="tt_sarttarih" type="date" value="${t.teknik_sartname_tarihi||''}" ${dis(eT)}></div>
       </div>
       <div class="frow">
-        <div class="fg"><label>Sevk Adresi</label><input id="tt_sevkadres" value="${t.sevk_adresi||''}" ${dis(eT)}></div>
+        <div class="fg">
+          <label>Sevk Adresi</label>
+          <input id="tt_sevkadres" value="${t.sevk_adresi||''}" ${dis(eT)} ${t.sevkiyat_musteriye_ait?'disabled style="background:#f9f9f7;color:#aaa"':''}>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="tt_musteriye" ${t.sevkiyat_musteriye_ait?'checked':''} ${dis(eT)} 
+          onchange="toggleSevkAdresi(this.checked)" style="width:16px;height:16px;cursor:pointer">
+        <label for="tt_musteriye" style="font-size:12px;cursor:pointer;color:#185FA5;font-weight:600">Sevkiyat müşteriye ait</label>
       </div>
       ${eT?`<div class="action-row" style="border:none;padding:6px 0 0"><button class="btn btn-primary" onclick="saveTeklifTeknik('${t.id}')">Kaydet</button></div>`:''}
     </div>
@@ -865,6 +1115,15 @@ function openTeklifModal(id){
     </div>`);
 }
 
+function toggleSevkAdresi(checked){
+  const el=document.getElementById('tt_sevkadres');
+  if(!el) return;
+  el.disabled=checked;
+  el.style.background=checked?'#f9f9f7':'';
+  el.style.color=checked?'#aaa':'';
+  if(checked) el.value='';
+}
+
 function checkUretimTamamlandi(){
   const v=document.getElementById('tu_durum')?.value;
   const el=document.getElementById('tu_onaytar');
@@ -893,10 +1152,12 @@ async function saveTeklifSatis(id){
 
 async function saveTeklifTeknik(id){
   const sartname=document.getElementById('tt_sartname').value;
+  const musteriyeAit=document.getElementById('tt_musteriye')?.checked||false;
   const body={
     teknik_sartname:sartname,
     teknik_sartname_tarihi:document.getElementById('tt_sarttarih').value||null,
-    sevk_adresi:document.getElementById('tt_sevkadres').value
+    sevk_adresi:musteriyeAit?null:document.getElementById('tt_sevkadres').value,
+    sevkiyat_musteriye_ait:musteriyeAit
   };
   const t=db.teklifler.find(x=>x.id===id);
   if(sartname==='Eklendi'&&t&&t.akis_durumu==='TEKNİK ŞARTNAME BEKLİYOR'){
@@ -935,6 +1196,9 @@ async function saveTeklifOnay(id,karar){
 }
 
 async function saveTeklifGonderim(id){
+  const gtar=document.getElementById('tg_gtar').value;
+  const gec=document.getElementById('tg_gec').value;
+  if(gtar&&gec&&gec<gtar){alert('Teklif geçerlilik tarihi gönderim tarihinden önce olamaz!');return;}
   const karar=document.getElementById('tg_karar').value;
   const onaylandi=karar==='ONAYLANDI';
   const body={
@@ -952,8 +1216,11 @@ async function saveTeklifGonderim(id){
 async function tekliftenProje(id){
   const t=db.teklifler.find(x=>x.id===id);
   if(!t) return;
-  // Geçici PN — planlamacı değiştirecek
-  const geciciPn='BEKLIYOR-'+Date.now();
+  // Geçici PN — revizyon no ile benzersiz
+  const geciciPn='BEKLIYOR-'+t.tn.replace(/\./g,'')+'-R'+(t.revizyon_no||0);
+  if(db.projeler.find(p=>p.pn===geciciPn)){
+    alert('Bu revizyondan zaten proje oluşturulmuş: '+geciciPn);return;
+  }
   try{
     await api('projeler','','POST',{
       pn:geciciPn, tn:t.tn,
@@ -1033,6 +1300,14 @@ function openProjeModal(pn){
     <!-- ÜRETİM -->
     <div id="pp-uretim" class="mbody">
       <div class="sec-lbl uretim">Üretim</div>
+      <div style="background:#FFF8F0;border:0.5px solid #FFE0B2;border-radius:8px;padding:10px 12px;margin-bottom:14px">
+        <div class="fg" style="margin:0">
+          <label style="color:#854F0B">İş Emri No</label>
+          <input id="pp_isemri" value="${proj.is_emri_no||''}" placeholder="IE-2026-001" ${dis(canEdit('uretim'))}
+            style="border-color:${proj.is_emri_no?'#FFB74D':'#ddd'}">
+        </div>
+        ${canEdit('uretim')?`<button class="btn btn-sm btn-primary" style="margin-top:8px" onclick="saveIsEmri('${pn}')">İş Emri Kaydet</button>`:''}
+      </div>
       ${!kl.length?`
         <p style="color:#aaa;font-size:12px;margin-bottom:10px">Henüz kalem yok.</p>
         ${canEdit('uretim')?`<button class="btn btn-primary btn-sm" onclick="openEkleKalem('${pn}')">+ Kalem Ekle</button>`:''}
@@ -1089,6 +1364,15 @@ function openProjeModal(pn){
   }
 }
 
+async function saveIsEmri(pn){
+  const no=document.getElementById('pp_isemri').value.trim();
+  try{
+    await api('projeler',`pn=eq.${pn}`,'PATCH',{is_emri_no:no||null});
+    await loadAll(); openProjeModal(pn);
+  }catch(e){alert('Hata: '+e.message);}
+}
+
+
 async function savePlanlama(pn){
   const yeniPn=document.getElementById('pp_pn').value.trim();
   if(!yeniPn){alert('Proje No zorunludur.');return;}
@@ -1105,9 +1389,13 @@ async function savePlanlama(pn){
     await loadAll();
   }
 
+  const bas=document.getElementById('pp_pbas').value;
+  const bit=document.getElementById('pp_pbit').value;
+  if(bas&&bit&&bit<bas){alert('Planlanan üretim bitiş tarihi başlangıçtan önce olamaz!');return;}
+
   const body={
-    plan_uretim_baslangic:document.getElementById('pp_pbas').value||null,
-    plan_uretim_bitis:document.getElementById('pp_pbit').value||null,
+    plan_uretim_baslangic:bas||null,
+    plan_uretim_bitis:bit||null,
     termin:document.getElementById('pp_termin').value||null,
     genel_durum:document.getElementById('pp_gdurum').value||null
   };
@@ -1180,9 +1468,11 @@ function checkUretimBitis(){
 
 async function saveUretim(kid,pn){
   const durum=document.getElementById('ur_dur').value;
+  const bas=document.getElementById('ur_bas').value;
   const bitis=document.getElementById('ur_bit').value;
+  if(bas&&bitis&&bitis<bas){alert('Üretim bitiş tarihi başlangıç tarihinden önce olamaz!');return;}
   const body={
-    uretim_baslangic:document.getElementById('ur_bas').value||null,
+    uretim_baslangic:bas||null,
     uretim_durumu:durum,
     uretim_bitis:durum==='Tamamlandı'?bitis||null:null
   };
@@ -1238,6 +1528,10 @@ async function saveQC(kid,pn){
   const rapor=document.getElementById('qc_rapor').value.trim();
   const tarih=document.getElementById('qc_tarih').value;
   if(!rapor){alert('QC Rapor No zorunludur.');return;}
+  const k=db.kalemler.find(x=>x.id===kid);
+  if(k&&k.uretim_bitis&&tarih&&tarih<k.uretim_bitis){
+    alert('QC tarihi üretim bitiş tarihinden önce olamaz!');return;
+  }
   const body={qc_rapor_no:rapor, qc_tarihi:tarih||null, akis_durumu:'FATURA BEKLİYOR'};
   const kl=db.kalemler.filter(k=>k.pn===pn);
   const tumQC=kl.every(k=>k.id===kid?true:!!k.qc_rapor_no);
@@ -1277,13 +1571,33 @@ async function saveMuhasebe(kid,pn){
 function renderSevkiyat(pn){
   const sel=document.getElementById('sel_sevkiyat'); if(!sel) return;
   const k=db.kalemler.find(x=>x.id===sel.value); if(!k) return;
+  const proj=db.projeler.find(x=>x.pn===pn)||{};
   const eS=canEdit('sevkiyat');
+  // Tekliften sevkiyat_musteriye_ait bilgisini al
+  const teklif=db.teklifler.find(x=>x.tn===proj.tn);
+  const musteriyeAit=teklif?.sevkiyat_musteriye_ait||false;
+
   document.getElementById('sevkiyat_fields').innerHTML=`
     <div class="kalem-box">
       <div class="kalem-head">${k.kalem_sira}. Kalem — ${k.aciklama} &nbsp; ${sb(k.akis_durumu)}</div>
+      <div class="frow full">
+        <div class="fg"><label>Sevk Adresi</label>
+          <input id="sev_adres" value="${musteriyeAit?'Sevkiyat müşteriye ait':proj.sevk_adresi||''}" 
+            disabled style="background:#f0faf0;color:${musteriyeAit?'#185FA5':'#333'};font-weight:${musteriyeAit?'600':'400'}">
+        </div>
+      </div>
+      <div class="frow full">
+        <div class="fg"><label>Sevkiyat Bilgisi</label>
+          <textarea id="sev_bilgi" ${dis(eS)} style="min-height:60px">${k.sevkiyat_bilgisi||''}</textarea>
+        </div>
+      </div>
       <div class="frow">
         <div class="fg"><label>Sevk Tarihi</label><input id="sev_tarih" type="date" value="${k.sevk_tarihi||''}" ${dis(eS)}></div>
-        <div class="fg"><label>Teslim Tarihi</label><input id="sev_teslim" type="date" value="${k.teslim_tarihi||''}" ${dis(eS)}></div>
+        <div class="fg"><label>Teslim Tarihi</label>
+          <input id="sev_teslim" type="date" value="${k.teslim_tarihi||''}" 
+            ${musteriyeAit?'disabled style="background:#f9f9f7;color:#aaa"':dis(eS)}>
+          ${musteriyeAit?'<span style="font-size:11px;color:#185FA5;margin-top:3px">Müşteri teslim alacak</span>':''}
+        </div>
       </div>
       ${eS?`<div class="action-row" style="border:none;padding:6px 0 0">
         <button class="btn btn-primary" onclick="saveSevkiyat('${k.id}','${pn}')">Kaydet</button>
@@ -1294,16 +1608,32 @@ function renderSevkiyat(pn){
 async function saveSevkiyat(kid,pn){
   const sevktar=document.getElementById('sev_tarih').value;
   const teslim=document.getElementById('sev_teslim').value;
-  if(!teslim){alert('Teslim tarihi zorunludur.');return;}
+  if(!sevktar){alert('Sevk tarihi zorunludur.');return;}
+  if(teslim&&teslim<sevktar){alert('Teslim tarihi sevk tarihinden önce olamaz!');return;}
   const k=db.kalemler.find(x=>x.id===kid);
   const isTam=k&&k.tam_kismi==='Tam';
-  const body={sevk_tarihi:sevktar||null, teslim_tarihi:teslim, akis_durumu:isTam?'TAMAMLANDI':'KISMİ TESLİM'};
 
-  if(isTam){
-    const kl=db.kalemler.filter(x=>x.pn===pn);
-    const tumTamamlandi=kl.every(x=>x.id===kid?true:x.akis_durumu==='TAMAMLANDI');
-    if(tumTamamlandi) await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'TAMAMLANDI',genel_durum:'Tamamlandı'});
+  let yeniDurum;
+  if(teslim){
+    yeniDurum=isTam?'TAMAMLANDI':'KISMİ TESLİM';
+  } else {
+    yeniDurum='SEVKİYATTA';
   }
+
+  const body={sevk_tarihi:sevktar, teslim_tarihi:teslim||null, akis_durumu:yeniDurum, sevkiyat_bilgisi:document.getElementById('sev_bilgi')?.value||null};
+
+  if(teslim){
+    const kl=db.kalemler.filter(x=>x.pn===pn);
+    const tumTamamlandi=kl.every(x=>x.id===kid?true:['TAMAMLANDI','KISMİ TESLİM'].includes(x.akis_durumu));
+    if(tumTamamlandi){
+      await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'TAMAMLANDI',genel_durum:'Tamamlandı'});
+    } else {
+      await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'KISMİ TESLİM',genel_durum:'Kısmi Tamamlandı'});
+    }
+  } else if(yeniDurum==='SEVKİYATTA'){
+    await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'SEVKİYATTA',genel_durum:'Sevkiyatta'});
+  }
+
   try{await api('kalemler',`id=eq.${kid}`,'PATCH',body);await loadAll();openProjeModal(pn);}
   catch(e){alert('Hata: '+e.message);}
 }
@@ -1323,6 +1653,187 @@ async function silProje(pn){
     await api('projeler',`pn=eq.${pn}`,'DELETE');
     closeM(); await loadAll();
   }catch(e){alert('Hata: '+e.message);}
+}
+
+/* ── RAPORLAR ── */
+let raporBasTar='', raporBitTar='';
+
+function renderRaporlar(){
+  if(!RAPOR_DEPT.includes(me.departman)) return `<div class="card"><div style="padding:24px;text-align:center;color:#aaa">Bu sayfaya erişim yetkiniz yok.</div></div>`;
+
+  // Tarih filtresi
+  const filtrele=(tarih)=>{
+    if(!tarih) return true;
+    if(raporBasTar && tarih < raporBasTar) return false;
+    if(raporBitTar && tarih > raporBitTar) return false;
+    return true;
+  };
+
+  const t=db.teklifler.filter(x=>filtrele(x.talep_tarihi));
+  const p=db.projeler.filter(x=>filtrele(x.teklif_onay_tarihi||x.created_at?.substring(0,10)));
+
+  // Satışçı listesi
+  const satiscilar=[...new Set(t.map(x=>x.teknik_satis_muh).filter(Boolean))].sort();
+
+  // Satışçı bazında KPI
+  const satisKPI=satiscilar.map(s=>{
+    const liste=t.filter(x=>x.teknik_satis_muh===s);
+    const toplam=liste.length;
+    const onaylandi=liste.filter(x=>x.teklif_durumu_musteri==='ONAYLANDI').length;
+    const olumsuz=liste.filter(x=>(x.teklif_durumu_musteri||'').startsWith('OLUMSUZ')||x.akis_durumu==='REDDEDİLDİ').length;
+    const beklemede=liste.filter(x=>x.teklif_durumu_musteri==='DEĞERLENDİRMEDE'||!x.teklif_durumu_musteri).length;
+    const oran=toplam>0?Math.round(onaylandi/toplam*100):0;
+    return {s,toplam,onaylandi,olumsuz,beklemede,oran};
+  });
+
+  // Kategori bazında dağılım
+  const kategoriler=[...new Set(t.map(x=>x.kategori).filter(Boolean))].sort();
+  const katKPI=kategoriler.map(k=>{
+    const liste=t.filter(x=>x.kategori===k);
+    const onaylandi=liste.filter(x=>x.teklif_durumu_musteri==='ONAYLANDI').length;
+    return {k,toplam:liste.length,onaylandi};
+  }).sort((a,b)=>b.toplam-a.toplam);
+
+  // Üretim KPI
+  const uretimSureler=t.filter(x=>x.baslangic_tarihi&&x.onaya_sunulma_tarihi).map(x=>{
+    const gun=Math.round((new Date(x.onaya_sunulma_tarihi)-new Date(x.baslangic_tarihi))/(1000*60*60*24));
+    return {tn:x.tn,musteri:x.musteri_adi,hazirlayan:x.teklifi_hazirlayan,gun,hiz:gun<=3?'hizli':gun<=7?'orta':'yavas'};
+  });
+  const hizli=uretimSureler.filter(x=>x.hiz==='hizli').length;
+  const orta=uretimSureler.filter(x=>x.hiz==='orta').length;
+  const yavas=uretimSureler.filter(x=>x.hiz==='yavas').length;
+  const toplam_sure=uretimSureler.length;
+
+  const tamamlananProje=p.filter(x=>x.akis_durumu==='TAMAMLANDI'||x.akis_durumu==='KISMİ TESLİM').length;
+  const devamEdenProje=p.filter(x=>x.akis_durumu!=='TAMAMLANDI'&&x.akis_durumu!=='KISMİ TESLİM').length;
+
+  let html=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="font-size:13px;font-weight:700;color:#1565C0">Raporlar — KPI Özeti</div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div class="fg" style="margin:0">
+        <label style="font-size:10px;color:#888;font-weight:700;text-transform:uppercase">Başlangıç</label>
+        <input type="date" value="${raporBasTar}" onchange="raporBasTar=this.value;renderTab('raporlar')"
+          style="font-size:12px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
+      </div>
+      <div class="fg" style="margin:0">
+        <label style="font-size:10px;color:#888;font-weight:700;text-transform:uppercase">Bitiş</label>
+        <input type="date" value="${raporBitTar}" onchange="raporBitTar=this.value;renderTab('raporlar')"
+          style="font-size:12px;padding:5px 8px;border:1px solid #ddd;border-radius:6px">
+      </div>
+      ${raporBasTar||raporBitTar?`<button class="btn btn-sm" onclick="raporBasTar='';raporBitTar='';renderTab('raporlar')" style="margin-top:16px">Temizle</button>`:''}
+    </div>
+  </div>
+  ${raporBasTar||raporBitTar?`<div class="alert-warn" style="margin-bottom:12px">
+    Filtre: ${raporBasTar||'Baştan'} — ${raporBitTar||'Bugüne'} &nbsp;|&nbsp; ${t.length} teklif, ${p.length} proje
+  </div>`:''}`;
+
+  // Üst KPI
+  html+=`<div class="kpi-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:14px">
+    <div class="kpi"><div class="kpi-lbl">Toplam teklif</div><div class="kpi-val kv-blue">${t.length}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Onaylanan teklif</div><div class="kpi-val kv-green">${t.filter(x=>x.teklif_durumu_musteri==='ONAYLANDI').length}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Tamamlanan proje</div><div class="kpi-val kv-green">${tamamlananProje}</div></div>
+    <div class="kpi"><div class="kpi-lbl">Devam eden proje</div><div class="kpi-val kv-blue">${devamEdenProje}</div></div>
+  </div>`;
+
+  // Satışçı KPI
+  html+=`<div class="card" style="margin-bottom:14px">
+    <div class="card-head"><div class="card-title">Satışçı Performansı</div></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr>
+        <th>Teknik Satış Müh.</th>
+        <th class="gh gh-satis">Toplam</th>
+        <th class="gh gh-qc">Onaylanan</th>
+        <th class="gh gh-onay">Olumsuz</th>
+        <th class="gh gh-uretim">Beklemede</th>
+        <th>Onay Oranı</th>
+      </tr></thead><tbody>`;
+
+  satisKPI.sort((a,b)=>b.onaylandi-a.onaylandi).forEach(r=>{
+    html+=`<tr>
+      <td style="font-weight:600">${r.s}</td>
+      <td style="text-align:center;font-weight:700;color:#185FA5">${r.toplam}</td>
+      <td style="text-align:center;font-weight:700;color:#2d7a2d">${r.onaylandi}</td>
+      <td style="text-align:center;font-weight:700;color:#a32d2d">${r.olumsuz}</td>
+      <td style="text-align:center;color:#888">${r.beklemede}</td>
+      <td style="min-width:120px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="flex:1;height:6px;background:#eee;border-radius:3px;overflow:hidden">
+            <div style="width:${r.oran}%;height:100%;background:${r.oran>=50?'#2d7a2d':'#E65100'};border-radius:3px"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${r.oran>=50?'#2d7a2d':'#E65100'}">${r.oran}%</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  if(!satisKPI.length) html+=`<tr><td colspan="6" style="padding:16px;text-align:center;color:#aaa">Veri yok</td></tr>`;
+  html+=`</tbody></table></div></div>`;
+
+  // Kategori dağılımı
+  html+=`<div class="card" style="margin-bottom:14px">
+    <div class="card-head"><div class="card-title">Kategori Bazında Teklif Dağılımı</div></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Kategori</th><th>Toplam</th><th>Onaylanan</th><th>Onay Oranı</th></tr></thead><tbody>`;
+
+  katKPI.forEach(r=>{
+    const oran=r.toplam>0?Math.round(r.onaylandi/r.toplam*100):0;
+    html+=`<tr>
+      <td>${catb(r.k)}</td>
+      <td style="font-weight:700;color:#185FA5">${r.toplam}</td>
+      <td style="font-weight:700;color:#2d7a2d">${r.onaylandi}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="width:80px;height:6px;background:#eee;border-radius:3px;overflow:hidden">
+            <div style="width:${oran}%;height:100%;background:${oran>=50?'#2d7a2d':'#E65100'};border-radius:3px"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700">${oran}%</span>
+        </div>
+      </td>
+    </tr>`;
+  });
+  if(!katKPI.length) html+=`<tr><td colspan="4" style="padding:16px;text-align:center;color:#aaa">Veri yok</td></tr>`;
+  html+=`</tbody></table></div></div>`;
+
+  // Üretim KPI
+  html+=`<div class="card" style="margin-bottom:14px">
+    <div class="card-head"><div class="card-title" style="color:#E65100">Üretim KPI — Teklif Hazırlama Süresi</div>
+      <span class="badge b-gray">${toplam_sure} teklif ölçüldü</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;padding:12px 14px;border-bottom:1px solid #f0f0f0">
+      <div style="text-align:center">
+        <div style="font-size:11px;color:#888;margin-bottom:4px">≤ 3 gün (Hızlı)</div>
+        <div style="font-size:28px;font-weight:700;color:#2d7a2d">${hizli}</div>
+        <div style="font-size:11px;color:#888">${toplam_sure>0?Math.round(hizli/toplam_sure*100):0}%</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:11px;color:#888;margin-bottom:4px">4-7 gün (Orta)</div>
+        <div style="font-size:28px;font-weight:700;color:#b06000">${orta}</div>
+        <div style="font-size:11px;color:#888">${toplam_sure>0?Math.round(orta/toplam_sure*100):0}%</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:11px;color:#888;margin-bottom:4px">> 7 gün (Yavaş)</div>
+        <div style="font-size:28px;font-weight:700;color:#a32d2d">${yavas}</div>
+        <div style="font-size:11px;color:#888">${toplam_sure>0?Math.round(yavas/toplam_sure*100):0}%</div>
+      </div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>TN</th><th>Müşteri</th><th>Hazırlayan</th><th>Süre</th><th>Değerlendirme</th></tr></thead>
+      <tbody>`;
+
+  uretimSureler.sort((a,b)=>a.gun-b.gun).forEach(r=>{
+    const renk=r.hiz==='hizli'?'b-green':r.hiz==='orta'?'b-amber':'b-red';
+    const lbl=r.hiz==='hizli'?'Hızlı':r.hiz==='orta'?'Orta':'Yavaş';
+    html+=`<tr>
+      <td style="font-weight:700;color:#185FA5">${r.tn}</td>
+      <td>${r.musteri||'—'}</td>
+      <td>${r.hazirlayan||'—'}</td>
+      <td style="font-weight:700">${r.gun} gün</td>
+      <td><span class="badge ${renk}">${lbl}</span></td>
+    </tr>`;
+  });
+  if(!uretimSureler.length) html+=`<tr><td colspan="5" style="padding:16px;text-align:center;color:#aaa">Henüz ölçülebilir veri yok</td></tr>`;
+  html+=`</tbody></table></div></div>`;
+
+  return html;
 }
 
 /* ── EXCEL EXPORT ── */
