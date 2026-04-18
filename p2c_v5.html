@@ -838,12 +838,12 @@ function projeRow(proj,k,isLate,showMeta){
       <td class="th-planlama" style="font-size:10px;${ls}">${proj.plan_uretim_baslangic||'—'}</td>
       <td style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
       <td style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
-      <td style="font-size:10px">${proj.genel_durum||'—'}</td>`
+      <td style="font-size:10px">${proj.genel_durum||'—'}</td>
+      <td class="th-uretim" style="font-size:10px;font-weight:600;color:#854F0B">${proj.is_emri_no||'<span style="color:#ccc">—</span>'}</td>`
     :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
 
   return `<tr onclick="openProjeModal('${proj.pn}')">
     ${meta}
-    <td class="th-uretim" style="font-size:10px;font-weight:600;color:#854F0B">${showMeta?proj.is_emri_no||'<span style="color:#ccc">—</span>':'<span style="color:#ccc"></span>'}</td>
     <td class="th-uretim" style="font-size:10px">${k?k.aciklama||'—':'—'}</td>
     <td style="font-size:10px">${k?k.tam_kismi||'—':'—'}</td>
     <td>${k?sb(k.uretim_durumu):'<span style="color:#ccc">—</span>'}</td>
@@ -1268,7 +1268,6 @@ function openProjeModal(pn){
       ${proj.pn.startsWith('BEKLIYOR')?`<div style="background:#fff8e1;border:1px solid #f59e0b;color:#7c4200;padding:8px 12px;border-radius:6px;font-size:12px;margin-bottom:10px">⚠ Proje No henüz girilmemiş. Lütfen aşağıya PN girin.</div>`:''}
       <div class="frow">
         <div class="fg"><label>Proje No (PN) *</label><input id="pp_pn" value="${proj.pn.startsWith('BEKLIYOR')?'':proj.pn}" placeholder="Proje No girin..." ${proj.pn.startsWith('BEKLIYOR')?'':dis(eP)} style="${proj.pn.startsWith('BEKLIYOR')?'border-color:#f59e0b;font-weight:700':''}" ></div>
-        <div class="fg"><label>Genel Durum</label><select id="pp_gdurum" ${dis(eP)}>${opts(PROJE_GENEL_DURUM,proj.genel_durum||'',true)}</select></div>
       </div>
       <div class="frow">
         <div class="fg"><label>Planlanan Üretim Başlangıç</label><input id="pp_pbas" type="date" value="${proj.plan_uretim_baslangic||''}" ${dis(eP)}></div>
@@ -1281,7 +1280,6 @@ function openProjeModal(pn){
             style="color:${proj.termin&&daysDiff(proj.termin)<0?'#a32d2d':'#333'}">
         </div>
       </div>
-      <div class="frow full"><div class="fg"><label>Genel Durum Notu</label><textarea id="pp_gnot" ${dis(eP)}>${proj.genel_durum||''}</textarea></div></div>
       ${eP?`<div class="action-row" style="border:none;padding:6px 0 0"><button class="btn btn-primary" onclick="savePlanlama('${pn}')">Kaydet</button></div>`:''}
 
       <div style="margin-top:14px;border-top:1px solid #f0f0f0;padding-top:10px">
@@ -1396,8 +1394,7 @@ async function savePlanlama(pn){
   const body={
     plan_uretim_baslangic:bas||null,
     plan_uretim_bitis:bit||null,
-    termin:document.getElementById('pp_termin').value||null,
-    genel_durum:document.getElementById('pp_gdurum').value||null
+    termin:document.getElementById('pp_termin').value||null
   };
   if(proj&&proj.akis_durumu==='PROJE KODU EKLENMELİ'){
     body.akis_durumu='ÜRETİM BAŞLANGIÇ BEKLİYOR';
@@ -1467,6 +1464,11 @@ function checkUretimBitis(){
 }
 
 async function saveUretim(kid,pn){
+  const proj=db.projeler.find(p=>p.pn===pn);
+  if(!proj?.plan_uretim_baslangic||!proj?.plan_uretim_bitis){
+    alert('Önce Planlama sekmesinden üretim başlangıç ve bitiş tarihlerini girmelisiniz!');
+    return;
+  }
   const durum=document.getElementById('ur_dur').value;
   const bas=document.getElementById('ur_bas').value;
   const bitis=document.getElementById('ur_bit').value;
@@ -1479,15 +1481,38 @@ async function saveUretim(kid,pn){
   if(durum==='Tamamlandı') body.akis_durumu='QC BEKLİYOR';
   else if(durum==='Çalışılıyor') body.akis_durumu='ÜRETİM DEVAM EDİYOR';
   else if(durum==='Beklemede') body.akis_durumu='ÜRETİM BEKLEMEDE';
+  else body.akis_durumu='ÜRETİM BEKLİYOR';
 
-  // Proje durumunu güncelle
-  const kl=db.kalemler.filter(k=>k.pn===pn);
-  const tumTamamlandi=kl.every(k=>k.id===kid?durum==='Tamamlandı':k.uretim_durumu==='Tamamlandı');
-  if(tumTamamlandi) await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'QC BEKLİYOR',genel_durum:'QC Bekliyor'});
-  else if(durum==='Çalışılıyor') await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:'ÜRETİM DEVAM EDİYOR',genel_durum:'Üretimde'});
-
-  try{await api('kalemler',`id=eq.${kid}`,'PATCH',body);await loadAll();openProjeModal(pn);}
-  catch(e){alert('Hata: '+e.message);}
+  // Kalem kaydı yapıldıktan SONRA proje durumunu tüm kalemlere göre hesapla
+  try{
+    await api('kalemler',`id=eq.${kid}`,'PATCH',body);
+    await loadAll();
+    // Güncel kalem listesi
+    const kl=db.kalemler.filter(k=>k.pn===pn);
+    let projDurum, genelDurum;
+    if(kl.every(k=>k.akis_durumu==='TAMAMLANDI')){
+      projDurum='TAMAMLANDI'; genelDurum='Tamamlandı';
+    } else if(kl.every(k=>['TAMAMLANDI','KISMİ TESLİM'].includes(k.akis_durumu))){
+      projDurum='KISMİ TESLİM'; genelDurum='Kısmi Tamamlandı';
+    } else if(kl.some(k=>k.akis_durumu==='SEVKİYATTA')){
+      projDurum='SEVKİYATTA'; genelDurum='Sevkiyatta';
+    } else if(kl.some(k=>k.akis_durumu==='SEVKİYAT BEKLİYOR')){
+      projDurum='SEVKİYAT BEKLİYOR'; genelDurum='Sevkiyatta';
+    } else if(kl.every(k=>['QC BEKLİYOR','FATURA BEKLİYOR','SEVKİYAT BEKLİYOR','SEVKİYATTA','TAMAMLANDI','KISMİ TESLİM'].includes(k.akis_durumu))){
+      // Tüm kalemler üretim sonrasına geçmiş — ama hepsi tamamlanmamışsa
+      if(kl.some(k=>k.akis_durumu==='FATURA BEKLİYOR')){ projDurum='FATURA BEKLİYOR'; genelDurum='Fatura Bekliyor'; }
+      else { projDurum='QC BEKLİYOR'; genelDurum='QC Bekliyor'; }
+    } else if(kl.some(k=>k.uretim_durumu==='Çalışılıyor')){
+      projDurum='ÜRETİM DEVAM EDİYOR'; genelDurum='Üretimde';
+    } else if(kl.some(k=>k.uretim_durumu==='Beklemede')){
+      projDurum='ÜRETİM BEKLEMEDE'; genelDurum='Beklemede';
+    } else {
+      projDurum='ÜRETİM BAŞLANGIÇ BEKLİYOR'; genelDurum='Üretim Bekliyor';
+    }
+    await api('projeler',`pn=eq.${pn}`,'PATCH',{akis_durumu:projDurum,genel_durum:genelDurum});
+    await loadAll();
+    openProjeModal(pn);
+  }catch(e){alert('Hata: '+e.message);}
 }
 
 async function ekleKismiKalem(pn){
