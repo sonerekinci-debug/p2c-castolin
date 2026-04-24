@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+window.onerror = function(msg, url, line, col, err) {
+  var f = new ActiveXObject("Scripting.FileSystemObject");
+  var out = f.CreateTextFile("syntax_err.txt", true);
+  out.WriteLine("Error: " + msg + " at line " + line);
+  out.Close();
+};
+</script>
+<script src="test_syntax.js"></script>
+</head>
+<body></body>
+</html>
