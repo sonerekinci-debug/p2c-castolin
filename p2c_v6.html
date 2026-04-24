@@ -115,6 +115,36 @@ body{font-family:'Inter', sans-serif;font-size:13px;background:var(--bg);color:v
 #toastWrap {position:fixed;bottom:30px;right:30px;z-index:9999;display:flex;flex-direction:column;gap:12px}
 .toast {min-width:300px;padding:16px 20px;border-radius:12px;font-size:14px;font-weight:700;color:#fff;box-shadow:0 10px 15px -3px rgba(0, 0, 0, 0.1);animation:t-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards}
 @keyframes t-in {from{opacity:0;transform:translateX(50px)}to{opacity:1;transform:translateX(0)}}
+
+/* ── DEPARTMENT COLOR BANDS ── */
+/* Group headers */
+.gh { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; padding:6px 8px; text-align:center; border-bottom:2px solid transparent; }
+.gh-planlama { background:#EBF5FB; color:#1A5276; border-bottom-color:#2980B9; }
+.gh-uretim   { background:#FEF9E7; color:#7D6608; border-bottom-color:#F1C40F; }
+.gh-qc       { background:#EAFAF1; color:#1E8449; border-bottom-color:#27AE60; }
+.gh-muhasebe { background:#F4ECF7; color:#6C3483; border-bottom-color:#8E44AD; }
+.gh-sevkiyat { background:#FEF5E7; color:#784212; border-bottom-color:#E67E22; }
+
+/* Sub-headers */
+.th-planlama { background:#D6EAF8; color:#1A5276; font-weight:700; }
+.th-uretim   { background:#FEF9E7; color:#7D6608; font-weight:700; }
+.th-qc       { background:#D5F5E3; color:#1E8449; font-weight:700; }
+.th-muhasebe { background:#E8DAEF; color:#6C3483; font-weight:700; }
+.th-sevkiyat { background:#FDEBD0; color:#784212; font-weight:700; }
+
+/* Data cells — subtle tint */
+td.th-planlama { background:#EBF5FB !important; }
+td.th-uretim   { background:#FFFDE7 !important; }
+td.th-qc       { background:#EAFAF1 !important; }
+td.th-muhasebe { background:#F9F0FF !important; }
+td.th-sevkiyat { background:#FEF6EC !important; }
+
+/* Row hover still works on top */
+tr:hover td.th-planlama { background:#D6EAF8 !important; }
+tr:hover td.th-uretim   { background:#FEF9E7 !important; }
+tr:hover td.th-qc       { background:#D5F5E3 !important; }
+tr:hover td.th-muhasebe { background:#E8DAEF !important; }
+tr:hover td.th-sevkiyat { background:#FDEBD0 !important; }
 </style>
 
 </head>
