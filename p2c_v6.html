@@ -138,8 +138,9 @@ body{font-family:'Inter', sans-serif;font-size:13px;background:var(--bg);color:v
 <div id="appWrap">
   <div class="topbar">
     <div class="topbar-logo-group">
-      <span style="color:var(--secondary); font-weight:900; font-size:18px; letter-spacing:-1px; margin-right:5px">Castolin</span>
-      <div class="topbar-logo" style="border-left: 2px solid var(--border); padding-left:12px">Proposal To Cash</div>
+      <img src="castolin_logo.svg" alt="Castolin Eutectic" style="height:42px; width:auto; display:block; filter: drop-shadow(0 1px 2px rgba(0,0,0,0.08));">
+      <div style="width:1px; height:32px; background:var(--border); margin:0 10px;"></div>
+      <div class="topbar-logo">Proposal To Cash</div>
       <div class="v-tag">v6.1</div>
     </div>
     <span id="userPill" class="user-pill"></span>
@@ -790,7 +791,7 @@ function renderProjeler(){
       </tr>
       <tr>
         ${thSort('PN','pn')}<th>TN</th><th>Onay Tar.</th><th>Teknik Müh.</th><th>Müşteri</th><th>Fatura Adr.</th><th>Sevk Adr.</th><th>Müşteri Yet.</th><th>Kategori</th><th>İş Tanımı</th>
-        <th class="th-planlama">Plan Baş.</th><th class="th-planlama">Plan Bitiş</th><th class="th-planlama">Termin</th><th class="th-planlama">Genel Durum</th>
+        <th class="th-planlama">Plan Baş.</th><th class="th-planlama">Plan Bitiş</th><th class="th-planlama">Termin</th>
         <th class="th-uretim">İş Emri No</th><th class="th-uretim">Kalem</th><th class="th-uretim">Tam/Kısmi</th><th class="th-uretim">Üretim Durum</th>
         <th class="th-qc">QC Rapor No</th><th class="th-qc">QC Tarihi</th>
         <th class="th-muhasebe">Fatura No</th><th class="th-muhasebe">Fatura Tar.</th>
@@ -842,9 +843,8 @@ function projeRow(proj,k,isLate,showMeta){
       <td class="th-planlama" style="font-size:10px;${ls}">${proj.plan_uretim_baslangic||'—'}</td>
       <td style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
       <td style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
-      <td style="font-size:10px">${esc(proj.genel_durum||'—')}</td>
       <td class="th-uretim" style="font-size:10px;font-weight:600;color:#854F0B">${proj.is_emri_no ? esc(proj.is_emri_no) : '<span style="color:#ccc">—</span>'}</td>`
-    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
 
   return `<tr onclick="openProjeModal('${esc(proj.pn)}')">
     ${meta}
@@ -1279,14 +1279,6 @@ function openProjeModal(pn){
       </div>
       <div class="frow">
         <div class="fg"><label>Termin Son Tarih</label><input id="pp_termin" type="date" value="${proj.termin||''}" ${dis(eP)}></div>
-        <div class="fg"><label>Malzeme Durumu</label>
-          <select id="pp_malzeme" ${dis(eP)}>
-            ${opts(['Bekleniyor','Stokta','Sipariş Edildi','Kısmi Mevcut'], proj.malzeme_durumu||'Bekleniyor')}
-          </select>
-        </div>
-      </div>
-      <div class="frow">
-        <div class="fg"><label>İş Emri No</label><input id="pp_isemri_plan" value="${esc(proj.is_emri_no||'')}" placeholder="IE-..." ${dis(eP)}></div>
         <div class="fg"><label>Termin Kalan/Geçen</label>
           <input value="${proj.termin?(daysDiff(proj.termin)>=0?daysDiff(proj.termin)+' gün kaldı':Math.abs(daysDiff(proj.termin))+' gün geçti'):'—'}" disabled
             style="color:${proj.termin&&daysDiff(proj.termin)<0?'var(--secondary)':'var(--text)'}; font-weight:700">
@@ -1409,9 +1401,7 @@ async function savePlanlama(pn){
     plan_uretim_baslangic:bas||null,
     plan_uretim_bitis:bit||null,
     termin:document.getElementById('pp_termin').value||null,
-    malzeme_durumu:document.getElementById('pp_malzeme').value,
-    planlama_notu:document.getElementById('pp_not').value.trim()||null,
-    is_emri_no:document.getElementById('pp_isemri_plan').value.trim()||null
+    planlama_notu:document.getElementById('pp_not').value.trim()||null
   };
   if(proj&&proj.akis_durumu==='PROJE KODU EKLENMELİ'){
     body.akis_durumu='ÜRETİM BAŞLANGIÇ BEKLİYOR';
