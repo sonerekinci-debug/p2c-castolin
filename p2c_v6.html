@@ -824,8 +824,8 @@ function renderProjeler(){
     <thead>
       <tr>
         <th colspan="10" class="gh gh-satis">TEKLİF (OTOMATİK GELİR)</th>
-        <th class="gh gh-planlama" colspan="4">PLANLAMA</th>
-        <th class="gh gh-uretim" colspan="3">ÜRETİM</th>
+        <th class="gh gh-planlama" colspan="3">PLANLAMA</th>
+        <th class="gh gh-uretim" colspan="4">ÜRETİM</th>
         <th class="gh gh-qc" colspan="2">QC</th>
         <th class="gh gh-muhasebe" colspan="2">MUHASEBE</th>
         <th class="gh gh-sevkiyat" colspan="2">SEVKİYAT</th>
@@ -872,21 +872,22 @@ function sortProje(col){
 function projeRow(proj,k,isLate,showMeta){
   const ls=isLate?'color:#a32d2d;font-weight:700':'';
   const meta=showMeta
-    ?`<td onclick="openProjeModal('${esc(proj.pn)}')" style="font-weight:700;color:#185FA5">${esc(proj.pn)}</td>
-      <td style="color:#888;font-size:10px">${esc(proj.tn)}</td>
-      <td style="font-size:10px">${proj.teklif_onay_tarihi||'—'}</td>
-      <td>${esc(proj.teknik_satis_muh||'—')}</td>
-      <td style="font-weight:600">${esc(proj.musteri_adi||'—')}</td>
-      <td style="font-size:10px">${esc(proj.fatura_adresi||'—')}</td>
-      <td style="font-size:10px">${esc(proj.sevk_adresi||'—')}</td>
-      <td style="font-size:10px">${esc(proj.musteri_yetkilisi||'—')}</td>
-      <td>${catb(proj.kategori)}</td>
-      <td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(proj.is_tanimi||'—')}</td>
+    ?`<td class="th-satis" onclick="openProjeModal('${esc(proj.pn)}')" style="font-weight:700;color:#185FA5">${esc(proj.pn)}</td>
+      <td class="th-satis" style="color:#888;font-size:10px">${esc(proj.tn)}</td>
+      <td class="th-satis" style="font-size:10px">${proj.teklif_onay_tarihi||'—'}</td>
+      <td class="th-satis">${esc(proj.teknik_satis_muh||'—')}</td>
+      <td class="th-satis" style="font-weight:600">${esc(proj.musteri_adi||'—')}</td>
+      <td class="th-teknik" style="font-size:10px">${esc(proj.fatura_adresi||'—')}</td>
+      <td class="th-teknik" style="font-size:10px">${esc(proj.sevk_adresi||'—')}</td>
+      <td class="th-teknik" style="font-size:10px">${esc(proj.musteri_yetkilisi||'—')}</td>
+      <td class="th-teknik">${catb(proj.kategori)}</td>
+      <td class="th-teknik" style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(proj.is_tanimi||'—')}</td>
       <td class="th-planlama" style="font-size:10px;${ls}">${proj.plan_uretim_baslangic||'—'}</td>
       <td class="th-planlama" style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
       <td class="th-planlama" style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
       <td class="th-uretim" style="font-size:10px;font-weight:600">${proj.is_emri_no ? esc(proj.is_emri_no) : '<span style="color:#ccc">—</span>'}</td>`
-    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+    :`<td class="th-satis"></td><td class="th-satis"></td><td class="th-satis"></td><td class="th-satis"></td><td class="th-satis"></td>
+      <td class="th-teknik"></td><td class="th-teknik"></td><td class="th-teknik"></td><td class="th-teknik"></td><td class="th-teknik"></td>
       <td class="th-planlama"></td><td class="th-planlama"></td><td class="th-planlama"></td>
       <td class="th-uretim"></td>`;
 
