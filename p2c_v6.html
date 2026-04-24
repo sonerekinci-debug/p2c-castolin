@@ -871,22 +871,24 @@ function projeRow(proj,k,isLate,showMeta){
       <td>${catb(proj.kategori)}</td>
       <td style="font-size:10px;max-width:120px;overflow:hidden;text-overflow:ellipsis">${esc(proj.is_tanimi||'—')}</td>
       <td class="th-planlama" style="font-size:10px;${ls}">${proj.plan_uretim_baslangic||'—'}</td>
-      <td style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
-      <td style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
-      <td class="th-uretim" style="font-size:10px;font-weight:600;color:#854F0B">${proj.is_emri_no ? esc(proj.is_emri_no) : '<span style="color:#ccc">—</span>'}</td>`
-    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>`;
+      <td class="th-planlama" style="font-size:10px">${proj.plan_uretim_bitis||'—'}</td>
+      <td class="th-planlama" style="font-size:10px;${ls}">${proj.termin||'—'}${isLate?' ⚠':''}</td>
+      <td class="th-uretim" style="font-size:10px;font-weight:600">${proj.is_emri_no ? esc(proj.is_emri_no) : '<span style="color:#ccc">—</span>'}</td>`
+    :`<td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td class="th-planlama"></td><td class="th-planlama"></td><td class="th-planlama"></td>
+      <td class="th-uretim"></td>`;
 
   return `<tr onclick="openProjeModal('${esc(proj.pn)}')">
     ${meta}
     <td class="th-uretim" style="font-size:10px">${k?k.aciklama||'—':'—'}</td>
-    <td style="font-size:10px">${k?k.tam_kismi||'—':'—'}</td>
-    <td>${k?sb(k.uretim_durumu):'<span style="color:#ccc">—</span>'}</td>
-    <td class="th-qc" style="font-weight:600;color:#2E7D32;font-size:10px">${k?k.qc_rapor_no||'<span style="color:#ccc;font-weight:400">—</span>':'<span style="color:#ccc">—</span>'}</td>
-    <td style="font-size:10px">${k?k.qc_tarihi||'—':'—'}</td>
-    <td class="th-muhasebe" style="font-size:10px;font-weight:600;color:#4527A0">${k?k.fatura_no||'<span style="color:#ccc;font-weight:400">—</span>':'<span style="color:#ccc">—</span>'}</td>
-    <td style="font-size:10px">${k?k.fatura_tarihi||'—':'—'}</td>
+    <td class="th-uretim" style="font-size:10px">${k?k.tam_kismi||'—':'—'}</td>
+    <td class="th-uretim">${k?sb(k.uretim_durumu):'<span style="color:#ccc">—</span>'}</td>
+    <td class="th-qc" style="font-weight:600;font-size:10px">${k?k.qc_rapor_no||'<span style="color:#ccc;font-weight:400">—</span>':'<span style="color:#ccc">—</span>'}</td>
+    <td class="th-qc" style="font-size:10px">${k?k.qc_tarihi||'—':'—'}</td>
+    <td class="th-muhasebe" style="font-size:10px;font-weight:600">${k?k.fatura_no||'<span style="color:#ccc;font-weight:400">—</span>':'<span style="color:#ccc">—</span>'}</td>
+    <td class="th-muhasebe" style="font-size:10px">${k?k.fatura_tarihi||'—':'—'}</td>
     <td class="th-sevkiyat" style="font-size:10px">${k?k.sevk_tarihi||'—':'—'}</td>
-    <td style="font-size:10px">${k?k.teslim_tarihi||'—':'—'}</td>
+    <td class="th-sevkiyat" style="font-size:10px">${k?k.teslim_tarihi||'—':'—'}</td>
     <td>${sb(k?k.akis_durumu:proj.akis_durumu)}</td>
   </tr>`;
 }
